@@ -36,7 +36,7 @@ import androidx.compose.ui.unit.sp
 
 /**
  * Feuille modale servant de base à tous les formulaires de saisie : poignée, titre, contenu libre
- * puis un bouton d'action pleine largeur — un rendu volontairement différent des AlertDialog empilées.
+ * puis un bouton d'action pleine largeur, un rendu volontairement différent des AlertDialog empilées.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -145,7 +145,7 @@ fun WakaField(
     }
 }
 
-/** Sélecteur en pilule à segments, avec fond glissant animé — remplace une rangée de FilterChip. */
+/** Sélecteur en pilule à segments, avec fond glissant animé, remplace une rangée de FilterChip. */
 @Composable
 fun <T> WakaSegmentedControl(
     options: List<T>,

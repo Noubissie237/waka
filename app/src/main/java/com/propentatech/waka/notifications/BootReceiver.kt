@@ -17,7 +17,7 @@ class BootReceiver : BroadcastReceiver() {
         val container = (context.applicationContext as WakaApplication).container
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                container.noteRepository.getAllActiveReminders().forEach { reminder ->
+                container.reminderRepository.getAllActive().forEach { reminder ->
                     ReminderScheduler.schedule(context, reminder)
                 }
             } finally {

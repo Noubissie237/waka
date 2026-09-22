@@ -21,7 +21,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,9 +32,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import com.propentatech.waka.model.Currency
+import com.propentatech.waka.security.BiometricAuthenticator
+import com.propentatech.waka.security.PinAuthUiState
+import com.propentatech.waka.ui.components.AuthGateSheet
 import com.propentatech.waka.ui.components.WakaField
 import com.propentatech.waka.ui.components.WakaFormSheet
-import com.propentatech.waka.security.BiometricAuthenticator
+import com.propentatech.waka.ui.components.WakaTopBar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,16 +46,29 @@ fun SettingsScreen(
     isPinSet: Boolean,
     biometricEnabled: Boolean,
     biometricAuthenticator: BiometricAuthenticator,
+    reauthState: PinAuthUiState,
     onDisplayCurrencyChange: (Currency) -> Unit,
     onSetPin: (String) -> Unit,
     onClearPin: () -> Unit,
     onBiometricEnabledChange: (Boolean) -> Unit,
+    onBeginReauth: () -> Unit,
+    onReauthDigit: (Char) -> Unit,
+    onReauthBackspace: () -> Unit,
+    onTryReauthBiometric: (FragmentActivity) -> Unit,
 ) {
     var showSetPin by remember { mutableStateOf(false) }
     var showClearPinConfirm by remember { mutableStateOf(false) }
+    var showAuthGate by remember { mutableStateOf(false) }
+    var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     val activity = LocalActivity.current as? FragmentActivity
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Paramètres") }) }) { innerPadding ->
+    fun requireAuth(action: () -> Unit) {
+        pendingAction = action
+        onBeginReauth()
+        showAuthGate = true
+    }
+
+    Scaffold(topBar = { WakaTopBar(title = "Paramètres") }) { innerPadding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(innerPadding),
             contentPadding = PaddingValues(16.dp),
@@ -95,7 +110,9 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(if (isPinSet) "Code PIN configuré" else "Aucun code PIN")
-                        TextButton(onClick = { showSetPin = true }) {
+                        TextButton(onClick = {
+                            if (isPinSet) requireAuth { showSetPin = true } else showSetPin = true
+                        }) {
                             Text(if (isPinSet) "Modifier" else "Configurer")
                         }
                     }
@@ -109,24 +126,44 @@ fun SettingsScreen(
                             Switch(
                                 checked = biometricEnabled,
                                 onCheckedChange = { enabled ->
-                                    if (!enabled || activity == null) {
-                                        onBiometricEnabledChange(enabled)
-                                    } else {
-                                        val availability = biometricAuthenticator.availability(activity)
-                                        onBiometricEnabledChange(
-                                            availability is BiometricAuthenticator.Availability.Available,
-                                        )
+                                    requireAuth {
+                                        if (!enabled || activity == null) {
+                                            onBiometricEnabledChange(enabled)
+                                        } else {
+                                            val availability = biometricAuthenticator.availability(activity)
+                                            onBiometricEnabledChange(
+                                                availability is BiometricAuthenticator.Availability.Available,
+                                            )
+                                        }
                                     }
                                 },
                             )
                         }
-                        TextButton(onClick = { showClearPinConfirm = true }) {
+                        TextButton(onClick = { requireAuth { showClearPinConfirm = true } }) {
                             Text("Supprimer le code PIN", color = MaterialTheme.colorScheme.error)
                         }
                     }
                 }
             }
         }
+    }
+
+    if (showAuthGate) {
+        AuthGateSheet(
+            uiState = reauthState,
+            onDigit = onReauthDigit,
+            onBackspace = onReauthBackspace,
+            onBiometricRequested = onTryReauthBiometric,
+            onAuthenticated = {
+                showAuthGate = false
+                pendingAction?.invoke()
+                pendingAction = null
+            },
+            onDismiss = {
+                showAuthGate = false
+                pendingAction = null
+            },
+        )
     }
 
     if (showSetPin) {

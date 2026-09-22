@@ -7,7 +7,7 @@ import javax.crypto.spec.PBEKeySpec
 
 /**
  * Hache le code PIN avec PBKDF2 + sel aléatoire : seul le hash est stocké, jamais le PIN.
- * Le sel diffère à chaque appel de [hash], donc deux hachages du même PIN ne sont jamais égaux —
+ * Le sel diffère à chaque appel de [hash], donc deux hachages du même PIN ne sont jamais égaux,
  * c'est [verify] qu'il faut utiliser pour comparer, jamais l'égalité directe.
  */
 object PinHasher {

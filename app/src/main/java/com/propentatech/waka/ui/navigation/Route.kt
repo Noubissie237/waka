@@ -14,11 +14,7 @@ sealed interface Route {
     data class ProjectDetail(val projectItemId: Long) : Route
 
     @Serializable
-    data object Notes : Route
-
-    /** [noteId] nul = création d'une nouvelle fiche. */
-    @Serializable
-    data class NoteDetail(val noteId: Long? = null) : Route
+    data object Reminders : Route
 
     @Serializable
     data object Settings : Route

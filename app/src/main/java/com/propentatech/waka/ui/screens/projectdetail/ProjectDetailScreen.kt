@@ -21,8 +21,10 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -35,10 +37,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -47,20 +47,28 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.propentatech.waka.data.local.entity.Contribution
 import com.propentatech.waka.data.local.entity.ProjectItem
+import com.propentatech.waka.data.local.entity.Reminder
 import com.propentatech.waka.domain.ProjectProgress
 import com.propentatech.waka.domain.SavingsEstimator
 import com.propentatech.waka.model.Currency
+import com.propentatech.waka.model.RepeatType
 import com.propentatech.waka.model.convert
+import com.propentatech.waka.ui.components.ProjectFormSheet
+import com.propentatech.waka.ui.components.ReminderFormSheet
 import com.propentatech.waka.ui.components.WakaField
 import com.propentatech.waka.ui.components.WakaFormSheet
+import com.propentatech.waka.ui.components.WakaTopBar
 import com.propentatech.waka.ui.components.WakaSegmentedControl
 import com.propentatech.waka.ui.format.formatMoney
+import kotlinx.coroutines.flow.Flow
 import java.text.DateFormat
 import java.util.Date
 
@@ -68,6 +76,7 @@ import java.util.Date
 @Composable
 fun ProjectDetailScreen(
     uiState: ProjectDetailUiState,
+    contributionEvents: Flow<ContributionEvent>,
     onBack: () -> Unit,
     onAddContribution: (amount: Double, currency: Currency, dateMillis: Long, note: String?) -> Unit,
     onDeleteContribution: (Contribution) -> Unit,
@@ -75,9 +84,13 @@ fun ProjectDetailScreen(
     onCreateChild: (title: String, targetAmount: Double?, currency: Currency?, prerequisiteIds: Set<Long>) -> Unit,
     onUpdateChild: (ProjectItem, title: String, targetAmount: Double?, currency: Currency?) -> Unit,
     onDeleteChild: (ProjectItem) -> Unit,
-    onUpdateSelf: (title: String, targetAmount: Double?, currency: Currency?, isPrivate: Boolean) -> Unit,
+    onUpdateSelfAsProject: (title: String, deadlineAt: Long?, isPrivate: Boolean) -> Unit,
+    onUpdateSelfAsObjective: (title: String, targetAmount: Double?, currency: Currency?) -> Unit,
     onDeleteSelf: () -> Unit,
     onChildClick: (ProjectItem) -> Unit,
+    onAddReminder: (hour: Int, minute: Int, weekday: Int?, repeatType: RepeatType, message: String) -> Unit,
+    onUpdateReminder: (Reminder, hour: Int, minute: Int, weekday: Int?, repeatType: RepeatType, message: String) -> Unit,
+    onDeleteReminder: (Reminder) -> Unit,
 ) {
     var showAddContribution by remember { mutableStateOf(false) }
     var showCreateChild by remember { mutableStateOf(false) }
@@ -86,6 +99,26 @@ fun ProjectDetailScreen(
     var showEditSelf by remember { mutableStateOf(false) }
     var showDeleteSelf by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
+    var showAddReminder by remember { mutableStateOf(false) }
+    var editingReminder by remember { mutableStateOf<Reminder?>(null) }
+    var deletingReminder by remember { mutableStateOf<Reminder?>(null) }
+    var contributionError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(contributionEvents) {
+        contributionEvents.collect { event ->
+            when (event) {
+                is ContributionEvent.Success -> {
+                    showAddContribution = false
+                    contributionError = null
+                }
+                is ContributionEvent.Rejected -> {
+                    contributionError = "Ce montant dépasse ce qu'il reste à financer sur ce projet " +
+                        "(il reste ${formatMoney(event.totalRemaining, event.currency)}). " +
+                        "Réduis le montant ou ajoute le reste sur un autre projet."
+                }
+            }
+        }
+    }
 
     LaunchedEffect(uiState.isLoading, uiState.item) {
         if (!uiState.isLoading && uiState.item == null) onBack()
@@ -93,8 +126,8 @@ fun ProjectDetailScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(uiState.item?.title ?: "…") },
+            WakaTopBar(
+                title = uiState.item?.title ?: "…",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
@@ -125,8 +158,9 @@ fun ProjectDetailScreen(
         },
         floatingActionButton = {
             if (uiState.item != null) {
+                val isRoot = uiState.item.parentId == null
                 FloatingActionButton(onClick = { showCreateChild = true }) {
-                    Icon(Icons.Filled.Add, contentDescription = "Ajouter une tâche")
+                    Icon(Icons.Filled.Add, contentDescription = if (isRoot) "Ajouter un objectif" else "Ajouter une tâche")
                 }
             }
         },
@@ -164,10 +198,11 @@ fun ProjectDetailScreen(
                 }
             }
 
+            val isRoot = item.parentId == null
             if (uiState.children.isNotEmpty()) {
                 item {
                     Spacer(Modifier.height(4.dp))
-                    Text("Tâches", style = MaterialTheme.typography.titleSmall)
+                    Text(if (isRoot) "Objectifs" else "Tâches", style = MaterialTheme.typography.titleSmall)
                 }
                 items(uiState.children, key = { it.item.id }) { entry ->
                     ChildRow(
@@ -181,9 +216,46 @@ fun ProjectDetailScreen(
             } else if (item.targetAmount == null) {
                 item {
                     Text(
-                        "Aucune tâche pour l'instant. Touchez + pour en ajouter une.",
+                        if (isRoot) {
+                            "Aucun objectif pour l'instant. Touchez + pour en ajouter un."
+                        } else {
+                            "Aucune tâche pour l'instant. Touchez + pour en ajouter une."
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            item {
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Rappels", style = MaterialTheme.typography.titleSmall)
+                    TextButton(onClick = { showAddReminder = true }) { Text("+ Ajouter") }
+                }
+            }
+            if (uiState.reminders.isEmpty()) {
+                item {
+                    Text(
+                        "Aucun rappel programmé pour ${if (isRoot) "ce projet" else "cet objectif"}.",
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else {
+                items(uiState.reminders, key = { it.id }) { reminder ->
+                    ReminderRow(
+                        reminder,
+                        onEdit = { editingReminder = reminder },
+                        onDelete = { deletingReminder = reminder },
                     )
                 }
             }
@@ -193,22 +265,25 @@ fun ProjectDetailScreen(
     if (showAddContribution && uiState.item?.currency != null) {
         AddContributionSheet(
             defaultCurrency = uiState.item.currency,
-            onDismiss = { showAddContribution = false },
+            errorMessage = contributionError,
+            onDismiss = { showAddContribution = false; contributionError = null },
             onConfirm = { amount, currency, note ->
+                contributionError = null
                 onAddContribution(amount, currency, System.currentTimeMillis(), note)
-                showAddContribution = false
             },
         )
     }
 
+    val isCurrentRoot = uiState.item?.parentId == null
+
     if (showCreateChild) {
         ItemFormSheet(
-            titleText = "Nouvelle tâche",
+            titleText = if (isCurrentRoot) "Nouvel objectif" else "Nouvelle tâche",
+            amountRequired = isCurrentRoot,
             existing = null,
-            showPrivacyToggle = false,
             siblings = uiState.children.map { it.item },
             onDismiss = { showCreateChild = false },
-            onConfirm = { title, amount, currency, _, prerequisiteIds ->
+            onConfirm = { title, amount, currency, prerequisiteIds ->
                 onCreateChild(title, amount, currency, prerequisiteIds)
                 showCreateChild = false
             },
@@ -217,12 +292,12 @@ fun ProjectDetailScreen(
 
     editingChild?.let { child ->
         ItemFormSheet(
-            titleText = "Modifier la tâche",
+            titleText = if (isCurrentRoot) "Modifier l'objectif" else "Modifier la tâche",
+            amountRequired = isCurrentRoot,
             existing = child,
-            showPrivacyToggle = false,
             siblings = emptyList(),
             onDismiss = { editingChild = null },
-            onConfirm = { title, amount, currency, _, _ ->
+            onConfirm = { title, amount, currency, _ ->
                 onUpdateChild(child, title, amount, currency)
                 editingChild = null
             },
@@ -230,17 +305,28 @@ fun ProjectDetailScreen(
     }
 
     if (showEditSelf && uiState.item != null) {
-        ItemFormSheet(
-            titleText = "Modifier le projet",
-            existing = uiState.item,
-            showPrivacyToggle = uiState.item.parentId == null,
-            siblings = emptyList(),
-            onDismiss = { showEditSelf = false },
-            onConfirm = { title, amount, currency, isPrivate, _ ->
-                onUpdateSelf(title, amount, currency, isPrivate)
-                showEditSelf = false
-            },
-        )
+        if (isCurrentRoot) {
+            ProjectFormSheet(
+                existing = uiState.item,
+                onDismiss = { showEditSelf = false },
+                onConfirm = { title, deadlineAt, isPrivate ->
+                    onUpdateSelfAsProject(title, deadlineAt, isPrivate)
+                    showEditSelf = false
+                },
+            )
+        } else {
+            ItemFormSheet(
+                titleText = "Modifier la tâche",
+                amountRequired = false,
+                existing = uiState.item,
+                siblings = emptyList(),
+                onDismiss = { showEditSelf = false },
+                onConfirm = { title, amount, currency, _ ->
+                    onUpdateSelfAsObjective(title, amount, currency)
+                    showEditSelf = false
+                },
+            )
+        }
     }
 
     deletingChild?.let { child ->
@@ -270,6 +356,43 @@ fun ProjectDetailScreen(
                 }) { Text("Supprimer", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { showDeleteSelf = false }) { Text("Annuler") } },
+        )
+    }
+
+    if (showAddReminder) {
+        ReminderFormSheet(
+            existing = null,
+            onDismiss = { showAddReminder = false },
+            onConfirm = { hour, minute, weekday, repeatType, message ->
+                onAddReminder(hour, minute, weekday, repeatType, message)
+                showAddReminder = false
+            },
+        )
+    }
+
+    editingReminder?.let { reminder ->
+        ReminderFormSheet(
+            existing = reminder,
+            onDismiss = { editingReminder = null },
+            onConfirm = { hour, minute, weekday, repeatType, message ->
+                onUpdateReminder(reminder, hour, minute, weekday, repeatType, message)
+                editingReminder = null
+            },
+        )
+    }
+
+    deletingReminder?.let { reminder ->
+        AlertDialog(
+            onDismissRequest = { deletingReminder = null },
+            title = { Text("Supprimer ce rappel ?") },
+            text = { Text("« ${reminder.message} » ne se déclenchera plus.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDeleteReminder(reminder)
+                    deletingReminder = null
+                }) { Text("Supprimer", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { deletingReminder = null }) { Text("Annuler") } },
         )
     }
 }
@@ -336,7 +459,7 @@ private fun ContributionRow(contribution: Contribution, onDelete: () -> Unit) {
             Text(formatMoney(contribution.amount, contribution.currency))
             Text(
                 DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(contribution.date)) +
-                    (contribution.note?.let { " — $it" } ?: ""),
+                    (contribution.note?.let { ", $it" } ?: ""),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -347,6 +470,56 @@ private fun ContributionRow(contribution: Contribution, onDelete: () -> Unit) {
     }
     HorizontalDivider()
 }
+
+@Composable
+private fun ReminderRow(reminder: Reminder, onEdit: () -> Unit, onDelete: () -> Unit) {
+    var showMenu by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column {
+            Text(reminder.message)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+                        .format(Date(reminder.triggerAt)),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (reminder.repeatType != RepeatType.NONE) {
+                    Icon(
+                        Icons.Filled.Repeat,
+                        contentDescription = "Récurrent",
+                        modifier = Modifier.padding(start = 6.dp).size(14.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        Box {
+            IconButton(onClick = { showMenu = true }) {
+                Icon(Icons.Filled.MoreVert, contentDescription = "Options")
+            }
+            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                DropdownMenuItem(
+                    text = { Text("Modifier") },
+                    leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                    onClick = { showMenu = false; onEdit() },
+                )
+                DropdownMenuItem(
+                    text = { Text("Supprimer") },
+                    leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
+                    onClick = { showMenu = false; onDelete() },
+                )
+            }
+        }
+    }
+    HorizontalDivider()
+}
+
 
 @Composable
 private fun ChildRow(
@@ -361,7 +534,12 @@ private fun ChildRow(
     var showMenu by remember { mutableStateOf(false) }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().alpha(if (entry.isLocked) 0.5f else 1f),
+        colors = if (entry.isLocked) {
+            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+        } else {
+            CardDefaults.cardColors()
+        },
         onClick = { if (!entry.isLocked && budgeted) onClick() },
     ) {
         Row(
@@ -405,7 +583,7 @@ private fun ChildRow(
                     )
                 } else if (entry.isLocked) {
                     Text(
-                        "Verrouillé — prérequis non complété",
+                        "Verrouillé, prérequis non complété",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -435,6 +613,7 @@ private fun ChildRow(
 @Composable
 private fun AddContributionSheet(
     defaultCurrency: Currency,
+    errorMessage: String?,
     onDismiss: () -> Unit,
     onConfirm: (amount: Double, currency: Currency, note: String?) -> Unit,
 ) {
@@ -471,17 +650,25 @@ private fun AddContributionSheet(
             onValueChange = { note = it },
             placeholder = "Acompte studio…",
         )
+        if (errorMessage != null) {
+            Spacer(Modifier.height(14.dp))
+            Text(
+                errorMessage,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
     }
 }
 
 @Composable
 private fun ItemFormSheet(
     titleText: String,
+    amountRequired: Boolean,
     existing: ProjectItem?,
-    showPrivacyToggle: Boolean,
     siblings: List<ProjectItem>,
     onDismiss: () -> Unit,
-    onConfirm: (title: String, targetAmount: Double?, currency: Currency?, isPrivate: Boolean, prerequisiteIds: Set<Long>) -> Unit,
+    onConfirm: (title: String, targetAmount: Double?, currency: Currency?, prerequisiteIds: Set<Long>) -> Unit,
 ) {
     var title by remember { mutableStateOf(existing?.title.orEmpty()) }
     var amountText by remember {
@@ -490,23 +677,22 @@ private fun ItemFormSheet(
         )
     }
     var currency by remember { mutableStateOf(existing?.currency ?: Currency.EUR) }
-    var isPrivate by remember { mutableStateOf(existing?.isPrivate ?: false) }
     var selectedPrerequisites by remember { mutableStateOf(setOf<Long>()) }
+    val amount = amountText.toDoubleOrNull()
 
     WakaFormSheet(
         title = titleText,
         onDismiss = onDismiss,
         primaryLabel = if (existing == null) "Créer" else "Enregistrer",
-        primaryEnabled = title.isNotBlank(),
+        primaryEnabled = title.isNotBlank() && (!amountRequired || amount != null),
         onPrimaryClick = {
-            val amount = amountText.toDoubleOrNull()
-            onConfirm(title, amount, if (amount != null) currency else null, isPrivate, selectedPrerequisites)
+            onConfirm(title, amount, if (amount != null) currency else null, selectedPrerequisites)
         },
     ) {
-        WakaField(label = "Titre", value = title, onValueChange = { title = it }, placeholder = "Studio meublé")
+        WakaField(label = "Titre", value = title, onValueChange = { title = it }, placeholder = "Acheter une valise")
         Spacer(Modifier.height(18.dp))
         WakaField(
-            label = "Montant cible (optionnel)",
+            label = if (amountRequired) "Montant" else "Montant cible (optionnel)",
             value = amountText,
             onValueChange = { amountText = it.filter { c -> c.isDigit() || c == '.' } },
             placeholder = "0",
@@ -519,17 +705,6 @@ private fun ItemFormSheet(
             onSelect = { currency = it },
             label = { it.name },
         )
-        if (showPrivacyToggle) {
-            Spacer(Modifier.height(22.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("Projet privé", style = MaterialTheme.typography.bodyLarge)
-                Switch(checked = isPrivate, onCheckedChange = { isPrivate = it })
-            }
-        }
         if (siblings.isNotEmpty()) {
             Spacer(Modifier.height(22.dp))
             Text(

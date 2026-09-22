@@ -18,6 +18,8 @@ class ProjectRepository(
 
     fun observeChildren(parentId: Long): Flow<List<ProjectItem>> = projectItemDao.observeChildren(parentId)
 
+    suspend fun getChildren(parentId: Long): List<ProjectItem> = projectItemDao.getChildren(parentId)
+
     fun observeItem(id: Long): Flow<ProjectItem?> = projectItemDao.observeById(id)
 
     suspend fun getItem(id: Long): ProjectItem? = projectItemDao.getById(id)
@@ -30,6 +32,9 @@ class ProjectRepository(
 
     fun observeContributions(projectItemId: Long): Flow<List<Contribution>> =
         contributionDao.observeForProjectItem(projectItemId)
+
+    suspend fun getContributions(projectItemId: Long): List<Contribution> =
+        contributionDao.getForProjectItem(projectItemId)
 
     suspend fun addContribution(contribution: Contribution): Long = contributionDao.insert(contribution)
 

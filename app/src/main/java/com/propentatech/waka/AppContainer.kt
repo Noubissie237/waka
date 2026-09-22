@@ -3,8 +3,8 @@ package com.propentatech.waka
 import android.content.Context
 import com.propentatech.waka.data.local.WakaDatabase
 import com.propentatech.waka.data.prefs.AppPreferences
-import com.propentatech.waka.data.repository.NoteRepository
 import com.propentatech.waka.data.repository.ProjectRepository
+import com.propentatech.waka.data.repository.ReminderRepository
 import com.propentatech.waka.security.BiometricAuthenticator
 import com.propentatech.waka.security.SecurityPreferences
 
@@ -18,8 +18,8 @@ class AppContainer(context: Context) {
         ProjectRepository(database.projectItemDao(), database.contributionDao(), database.taskDependencyDao())
     }
 
-    val noteRepository: NoteRepository by lazy {
-        NoteRepository(database.noteDao(), database.reminderDao())
+    val reminderRepository: ReminderRepository by lazy {
+        ReminderRepository(database.reminderDao())
     }
 
     val appPreferences: AppPreferences by lazy { AppPreferences(context) }

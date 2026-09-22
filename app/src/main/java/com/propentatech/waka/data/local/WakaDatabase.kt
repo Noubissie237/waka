@@ -6,12 +6,10 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import com.propentatech.waka.data.local.dao.ContributionDao
-import com.propentatech.waka.data.local.dao.NoteDao
 import com.propentatech.waka.data.local.dao.ProjectItemDao
 import com.propentatech.waka.data.local.dao.ReminderDao
 import com.propentatech.waka.data.local.dao.TaskDependencyDao
 import com.propentatech.waka.data.local.entity.Contribution
-import com.propentatech.waka.data.local.entity.Note
 import com.propentatech.waka.data.local.entity.ProjectItem
 import com.propentatech.waka.data.local.entity.Reminder
 import com.propentatech.waka.data.local.entity.TaskDependency
@@ -21,10 +19,9 @@ import com.propentatech.waka.data.local.entity.TaskDependency
         ProjectItem::class,
         Contribution::class,
         TaskDependency::class,
-        Note::class,
         Reminder::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -32,7 +29,6 @@ abstract class WakaDatabase : RoomDatabase() {
     abstract fun projectItemDao(): ProjectItemDao
     abstract fun contributionDao(): ContributionDao
     abstract fun taskDependencyDao(): TaskDependencyDao
-    abstract fun noteDao(): NoteDao
     abstract fun reminderDao(): ReminderDao
 
     companion object {
@@ -44,7 +40,11 @@ abstract class WakaDatabase : RoomDatabase() {
                     context.applicationContext,
                     WakaDatabase::class.java,
                     "waka.db",
-                ).build().also { instance = it }
+                )
+                    // App encore en développement, pas de données à préserver entre schémas :
+                    // une vraie migration remplacera ceci avant la première publication.
+                    .fallbackToDestructiveMigration(dropAllTables = true)
+                    .build().also { instance = it }
             }
     }
 }

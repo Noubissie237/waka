@@ -7,11 +7,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -41,12 +42,10 @@ import com.propentatech.waka.ui.screens.home.HomeScreen
 import com.propentatech.waka.ui.screens.home.HomeViewModel
 import com.propentatech.waka.ui.screens.lock.LockScreen
 import com.propentatech.waka.ui.screens.lock.LockViewModel
-import com.propentatech.waka.ui.screens.notes.NoteEditScreen
-import com.propentatech.waka.ui.screens.notes.NoteEditViewModel
-import com.propentatech.waka.ui.screens.notes.NotesListScreen
-import com.propentatech.waka.ui.screens.notes.NotesViewModel
 import com.propentatech.waka.ui.screens.projectdetail.ProjectDetailScreen
 import com.propentatech.waka.ui.screens.projectdetail.ProjectDetailViewModel
+import com.propentatech.waka.ui.screens.reminders.RemindersListScreen
+import com.propentatech.waka.ui.screens.reminders.RemindersViewModel
 import com.propentatech.waka.ui.screens.settings.SettingsScreen
 import com.propentatech.waka.ui.screens.settings.SettingsViewModel
 import com.propentatech.waka.ui.theme.WakaTheme
@@ -75,7 +74,7 @@ fun WakaApp(modifier: Modifier = Modifier) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val destination = backStackEntry?.destination
     val isTopLevel = destination?.hasRoute<Route.Home>() == true ||
-        destination?.hasRoute<Route.Notes>() == true ||
+        destination?.hasRoute<Route.Reminders>() == true ||
         destination?.hasRoute<Route.Settings>() == true
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -87,6 +86,9 @@ fun WakaApp(modifier: Modifier = Modifier) {
 
     Scaffold(
         modifier = modifier,
+        // Chaque écran a son propre Scaffold + TopAppBar qui gère déjà l'encoche du haut :
+        // laisser celui-ci la réserver aussi doublerait l'espace sous la barre de statut.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
             if (isTopLevel) {
                 NavigationBar {
@@ -97,12 +99,12 @@ fun WakaApp(modifier: Modifier = Modifier) {
                         label = { Text("Accueil") },
                     )
                     NavigationBarItem(
-                        selected = backStackEntry?.destination?.hasRoute<Route.Notes>() == true,
+                        selected = backStackEntry?.destination?.hasRoute<Route.Reminders>() == true,
                         onClick = {
-                            navController.navigate(Route.Notes) { popUpTo(Route.Home) }
+                            navController.navigate(Route.Reminders) { popUpTo(Route.Home) }
                         },
-                        icon = { Icon(Icons.AutoMirrored.Filled.Notes, contentDescription = null) },
-                        label = { Text("Notes") },
+                        icon = { Icon(Icons.Filled.Notifications, contentDescription = null) },
+                        label = { Text("Rappels") },
                     )
                     NavigationBarItem(
                         selected = backStackEntry?.destination?.hasRoute<Route.Settings>() == true,
@@ -134,12 +136,23 @@ private fun WakaNavHost(
         composable<Route.Home> {
             val viewModel: HomeViewModel = viewModel(
                 factory = viewModelFactory {
-                    initializer { HomeViewModel(container.projectRepository, container.appPreferences) }
+                    initializer {
+                        HomeViewModel(
+                            container.projectRepository,
+                            container.appPreferences,
+                            container.securityPreferences,
+                            container.biometricAuthenticator,
+                        )
+                    }
                 },
             )
             val uiState by viewModel.uiState.collectAsState()
+            val revealedProjectIds by viewModel.revealedProjectIds.collectAsState()
+            val reauthState by viewModel.reauthState.collectAsState()
             HomeScreen(
                 uiState = uiState,
+                revealedProjectIds = revealedProjectIds,
+                reauthState = reauthState,
                 onDisplayCurrencyChange = viewModel::setDisplayCurrency,
                 onCreateProject = viewModel::createRootProject,
                 onUpdateProject = viewModel::updateProject,
@@ -151,6 +164,11 @@ private fun WakaNavHost(
                         navController.navigate(Route.ProjectDetail(item.id))
                     }
                 },
+                onBeginReauth = viewModel::beginReauth,
+                onReauthDigit = viewModel::onReauthDigit,
+                onReauthBackspace = viewModel::onReauthBackspace,
+                onTryReauthBiometric = viewModel::tryReauthBiometric,
+                onRevealProject = viewModel::revealProject,
             )
         }
 
@@ -188,7 +206,9 @@ private fun WakaNavHost(
                     initializer {
                         ProjectDetailViewModel(
                             container.projectRepository,
+                            container.reminderRepository,
                             container.appPreferences,
+                            container.appContext,
                             route.projectItemId,
                         )
                     }
@@ -197,6 +217,7 @@ private fun WakaNavHost(
             val uiState by viewModel.uiState.collectAsState()
             ProjectDetailScreen(
                 uiState = uiState,
+                contributionEvents = viewModel.contributionEvents,
                 onBack = { navController.popBackStack() },
                 onAddContribution = viewModel::addContribution,
                 onDeleteContribution = viewModel::deleteContribution,
@@ -204,61 +225,62 @@ private fun WakaNavHost(
                 onCreateChild = viewModel::createChild,
                 onUpdateChild = viewModel::updateChild,
                 onDeleteChild = viewModel::deleteChild,
-                onUpdateSelf = viewModel::updateSelf,
+                onUpdateSelfAsProject = viewModel::updateSelfAsProject,
+                onUpdateSelfAsObjective = viewModel::updateSelfAsObjective,
                 onDeleteSelf = viewModel::deleteSelf,
                 onChildClick = { child -> navController.navigate(Route.ProjectDetail(child.id)) },
+                onAddReminder = viewModel::addReminder,
+                onUpdateReminder = viewModel::updateReminder,
+                onDeleteReminder = viewModel::deleteReminder,
             )
         }
 
-        composable<Route.Notes> {
-            val viewModel: NotesViewModel = viewModel(
-                factory = viewModelFactory { initializer { NotesViewModel(container.noteRepository) } },
-            )
-            val notes by viewModel.notes.collectAsState()
-            NotesListScreen(
-                notes = notes,
-                onNoteClick = { id -> navController.navigate(Route.NoteDetail(id)) },
-                onCreateNote = { navController.navigate(Route.NoteDetail(null)) },
-            )
-        }
-
-        composable<Route.NoteDetail> { backStackEntry ->
-            val route = backStackEntry.toRoute<Route.NoteDetail>()
-            val viewModel: NoteEditViewModel = viewModel(
-                key = "note_${route.noteId}",
+        composable<Route.Reminders> {
+            val viewModel: RemindersViewModel = viewModel(
                 factory = viewModelFactory {
-                    initializer { NoteEditViewModel(container.noteRepository, container.appContext, route.noteId) }
+                    initializer {
+                        RemindersViewModel(container.reminderRepository, container.projectRepository, container.appContext)
+                    }
                 },
             )
-            val uiState by viewModel.uiState.collectAsState()
-            NoteEditScreen(
-                uiState = uiState,
-                onBack = { navController.popBackStack() },
-                onSave = { title, content -> viewModel.save(title, content) {} },
-                onDelete = viewModel::delete,
-                onAddReminder = viewModel::addReminder,
-                onDeleteReminder = viewModel::deleteReminder,
+            val reminders by viewModel.reminders.collectAsState()
+            RemindersListScreen(
+                reminders = reminders,
+                onUpdate = viewModel::updateReminder,
+                onDelete = viewModel::deleteReminder,
             )
         }
 
         composable<Route.Settings> {
             val viewModel: SettingsViewModel = viewModel(
                 factory = viewModelFactory {
-                    initializer { SettingsViewModel(container.appPreferences, container.securityPreferences) }
+                    initializer {
+                        SettingsViewModel(
+                            container.appPreferences,
+                            container.securityPreferences,
+                            container.biometricAuthenticator,
+                        )
+                    }
                 },
             )
             val displayCurrency by viewModel.displayCurrency.collectAsState()
             val isPinSet by viewModel.isPinSet.collectAsState()
             val biometricEnabled by viewModel.biometricEnabled.collectAsState()
+            val reauthState by viewModel.reauthState.collectAsState()
             SettingsScreen(
                 displayCurrency = displayCurrency,
                 isPinSet = isPinSet,
                 biometricEnabled = biometricEnabled,
                 biometricAuthenticator = container.biometricAuthenticator,
+                reauthState = reauthState,
                 onDisplayCurrencyChange = viewModel::setDisplayCurrency,
                 onSetPin = viewModel::setPin,
                 onClearPin = viewModel::clearPin,
                 onBiometricEnabledChange = viewModel::setBiometricEnabled,
+                onBeginReauth = viewModel::beginReauth,
+                onReauthDigit = viewModel::onReauthDigit,
+                onReauthBackspace = viewModel::onReauthBackspace,
+                onTryReauthBiometric = viewModel::tryReauthBiometric,
             )
         }
     }

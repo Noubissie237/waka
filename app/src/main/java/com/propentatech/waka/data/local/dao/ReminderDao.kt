@@ -28,13 +28,6 @@ interface ReminderDao {
     @Query("SELECT * FROM reminders WHERE isActive = 1")
     suspend fun getAllActive(): List<Reminder>
 
-    @Query("SELECT * FROM reminders WHERE noteId = :noteId ORDER BY triggerAt")
-    fun observeForNote(noteId: Long): Flow<List<Reminder>>
-
     @Query("SELECT * FROM reminders WHERE projectItemId = :projectItemId ORDER BY triggerAt")
     fun observeForProjectItem(projectItemId: Long): Flow<List<Reminder>>
-
-    /** Utilisé pour annuler/replanifier les rappels d'échéance auto-générés d'une tâche. */
-    @Query("SELECT * FROM reminders WHERE projectItemId = :projectItemId AND noteId IS NULL")
-    suspend fun getAutoDeadlineReminders(projectItemId: Long): List<Reminder>
 }

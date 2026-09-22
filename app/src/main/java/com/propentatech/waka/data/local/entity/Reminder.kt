@@ -8,17 +8,11 @@ import com.propentatech.waka.model.RepeatType
 
 /**
  * Rappel programmé via AlarmManager, déclenché même app fermée.
- * Lié à une [Note] et/ou directement à un [ProjectItem] (ex : rappel d'échéance auto-généré).
+ * Toujours rattaché à un projet ou à un de ses objectifs, Waka ne gère pas de notes libres.
  */
 @Entity(
     tableName = "reminders",
     foreignKeys = [
-        ForeignKey(
-            entity = Note::class,
-            parentColumns = ["id"],
-            childColumns = ["noteId"],
-            onDelete = ForeignKey.CASCADE,
-        ),
         ForeignKey(
             entity = ProjectItem::class,
             parentColumns = ["id"],
@@ -26,12 +20,11 @@ import com.propentatech.waka.model.RepeatType
             onDelete = ForeignKey.CASCADE,
         ),
     ],
-    indices = [Index("noteId"), Index("projectItemId")],
+    indices = [Index("projectItemId")],
 )
 data class Reminder(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val noteId: Long? = null,
-    val projectItemId: Long? = null,
+    val projectItemId: Long,
     val triggerAt: Long,
     val message: String,
     val isActive: Boolean = true,
