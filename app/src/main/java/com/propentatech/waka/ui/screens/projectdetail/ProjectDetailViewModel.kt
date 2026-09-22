@@ -37,7 +37,12 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-data class ChildEntry(val item: ProjectItem, val progress: ProjectProgress, val isLocked: Boolean)
+data class ChildEntry(
+    val item: ProjectItem,
+    val progress: ProjectProgress,
+    val isLocked: Boolean,
+    val prerequisiteIds: Set<Long> = emptySet(),
+)
 
 sealed interface ContributionEvent {
     data object Success : ContributionEvent
@@ -135,12 +140,18 @@ class ProjectDetailViewModel(
         return childProgress
             .sortedBy { it.first.orderIndex }
             .map { (child, progress) ->
-                val completions = prerequisitesByChild[child.id].orEmpty()
-                    .map { completionByPrerequisite[it.dependsOnTaskId] ?: true }
-                ChildEntry(child, progress, DependencyEngine.isLocked(completions))
+                val prerequisites = prerequisitesByChild[child.id].orEmpty()
+                val completions = prerequisites.map { completionByPrerequisite[it.dependsOnTaskId] ?: true }
+                ChildEntry(
+                    item = child,
+                    progress = progress,
+                    isLocked = DependencyEngine.isLocked(completions),
+                    prerequisiteIds = prerequisites.map { it.dependsOnTaskId }.toSet(),
+                )
             }
-            // Les objectifs/tâches atteints descendent en bas : seuls ceux en cours restent bien visibles en haut.
-            .sortedBy { it.progress.isCompleted }
+            // Déverrouillés toujours en haut, verrouillés toujours en bas ; à l'intérieur de
+            // chaque groupe, les objectifs atteints descendent en dessous de ceux en cours.
+            .sortedWith(compareBy({ it.isLocked }, { it.progress.isCompleted }))
     }
 
     /**
@@ -227,11 +238,25 @@ class ProjectDetailViewModel(
         viewModelScope.launch { projectRepository.deleteItem(item) }
     }
 
-    fun updateChild(child: ProjectItem, title: String, targetAmount: Double?, currency: Currency?) {
+    fun updateChild(
+        child: ProjectItem,
+        title: String,
+        targetAmount: Double?,
+        currency: Currency?,
+        prerequisiteIds: Set<Long>,
+    ) {
         val trimmed = title.trim()
         if (trimmed.isEmpty()) return
         viewModelScope.launch {
             projectRepository.updateItem(child.copy(title = trimmed, targetAmount = targetAmount, currency = currency))
+
+            val existing = projectRepository.getPrerequisitesOf(child.id)
+            val existingIds = existing.map { it.dependsOnTaskId }.toSet()
+            existing.filter { it.dependsOnTaskId !in prerequisiteIds }
+                .forEach { projectRepository.removeDependency(it) }
+            (prerequisiteIds - existingIds).forEach { prerequisiteId ->
+                projectRepository.addDependency(taskId = child.id, dependsOnTaskId = prerequisiteId)
+            }
         }
     }
 

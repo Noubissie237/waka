@@ -82,7 +82,7 @@ fun ProjectDetailScreen(
     onDeleteContribution: (Contribution) -> Unit,
     onToggleManualCompletion: (ProjectItem) -> Unit,
     onCreateChild: (title: String, targetAmount: Double?, currency: Currency?, prerequisiteIds: Set<Long>) -> Unit,
-    onUpdateChild: (ProjectItem, title: String, targetAmount: Double?, currency: Currency?) -> Unit,
+    onUpdateChild: (ProjectItem, title: String, targetAmount: Double?, currency: Currency?, prerequisiteIds: Set<Long>) -> Unit,
     onDeleteChild: (ProjectItem) -> Unit,
     onUpdateSelfAsProject: (title: String, deadlineAt: Long?, isPrivate: Boolean) -> Unit,
     onUpdateSelfAsObjective: (title: String, targetAmount: Double?, currency: Currency?) -> Unit,
@@ -94,7 +94,7 @@ fun ProjectDetailScreen(
 ) {
     var showAddContribution by remember { mutableStateOf(false) }
     var showCreateChild by remember { mutableStateOf(false) }
-    var editingChild by remember { mutableStateOf<ProjectItem?>(null) }
+    var editingChild by remember { mutableStateOf<ChildEntry?>(null) }
     var deletingChild by remember { mutableStateOf<ProjectItem?>(null) }
     var showEditSelf by remember { mutableStateOf(false) }
     var showDeleteSelf by remember { mutableStateOf(false) }
@@ -209,7 +209,7 @@ fun ProjectDetailScreen(
                         entry = entry,
                         onClick = { onChildClick(entry.item) },
                         onToggleManual = { onToggleManualCompletion(entry.item) },
-                        onEdit = { editingChild = entry.item },
+                        onEdit = { editingChild = entry },
                         onDelete = { deletingChild = entry.item },
                     )
                 }
@@ -290,15 +290,16 @@ fun ProjectDetailScreen(
         )
     }
 
-    editingChild?.let { child ->
+    editingChild?.let { entry ->
         ItemFormSheet(
             titleText = if (isCurrentRoot) "Modifier l'objectif" else "Modifier la tâche",
             amountRequired = isCurrentRoot,
-            existing = child,
-            siblings = emptyList(),
+            existing = entry.item,
+            siblings = uiState.children.filter { it.item.id != entry.item.id }.map { it.item },
+            initialPrerequisiteIds = entry.prerequisiteIds,
             onDismiss = { editingChild = null },
-            onConfirm = { title, amount, currency, _ ->
-                onUpdateChild(child, title, amount, currency)
+            onConfirm = { title, amount, currency, prerequisiteIds ->
+                onUpdateChild(entry.item, title, amount, currency, prerequisiteIds)
                 editingChild = null
             },
         )
@@ -669,6 +670,7 @@ private fun ItemFormSheet(
     siblings: List<ProjectItem>,
     onDismiss: () -> Unit,
     onConfirm: (title: String, targetAmount: Double?, currency: Currency?, prerequisiteIds: Set<Long>) -> Unit,
+    initialPrerequisiteIds: Set<Long> = emptySet(),
 ) {
     var title by remember { mutableStateOf(existing?.title.orEmpty()) }
     var amountText by remember {
@@ -677,7 +679,7 @@ private fun ItemFormSheet(
         )
     }
     var currency by remember { mutableStateOf(existing?.currency ?: Currency.EUR) }
-    var selectedPrerequisites by remember { mutableStateOf(setOf<Long>()) }
+    var selectedPrerequisites by remember { mutableStateOf(initialPrerequisiteIds) }
     val amount = amountText.toDoubleOrNull()
 
     WakaFormSheet(
