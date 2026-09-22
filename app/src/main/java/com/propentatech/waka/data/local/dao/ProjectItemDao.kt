@@ -34,4 +34,8 @@ interface ProjectItemDao {
 
     @Query("SELECT * FROM project_items WHERE parentId = :parentId ORDER BY orderIndex")
     suspend fun getChildren(parentId: Long): List<ProjectItem>
+
+    /** Utilisé pour l'export complet : tout l'arbre, sans distinction de niveau. */
+    @Query("SELECT * FROM project_items")
+    suspend fun getAllItems(): List<ProjectItem>
 }

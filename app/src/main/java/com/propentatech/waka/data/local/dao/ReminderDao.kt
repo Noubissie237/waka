@@ -30,4 +30,8 @@ interface ReminderDao {
 
     @Query("SELECT * FROM reminders WHERE projectItemId = :projectItemId ORDER BY triggerAt")
     fun observeForProjectItem(projectItemId: Long): Flow<List<Reminder>>
+
+    /** Utilisé pour l'export complet : y compris les rappels ponctuels déjà déclenchés. */
+    @Query("SELECT * FROM reminders")
+    suspend fun getAllReminders(): List<Reminder>
 }

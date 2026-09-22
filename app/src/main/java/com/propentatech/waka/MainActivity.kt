@@ -258,6 +258,7 @@ private fun WakaNavHost(
                         SettingsViewModel(
                             container.appPreferences,
                             container.securityPreferences,
+                            container.backupRepository,
                             container.biometricAuthenticator,
                         )
                     }
@@ -273,6 +274,7 @@ private fun WakaNavHost(
                 biometricEnabled = biometricEnabled,
                 biometricAuthenticator = container.biometricAuthenticator,
                 reauthState = reauthState,
+                backupEvents = viewModel.backupEvents,
                 onDisplayCurrencyChange = viewModel::setDisplayCurrency,
                 onSetPin = viewModel::setPin,
                 onClearPin = viewModel::clearPin,
@@ -281,6 +283,9 @@ private fun WakaNavHost(
                 onReauthDigit = viewModel::onReauthDigit,
                 onReauthBackspace = viewModel::onReauthBackspace,
                 onTryReauthBiometric = viewModel::tryReauthBiometric,
+                onExportData = viewModel::exportData,
+                onImportData = viewModel::importData,
+                hasFullStorageAccess = viewModel::hasFullStorageAccess,
             )
         }
     }

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- /storage/emulated/0/waka/ (avec l'accès « tous les fichiers ») -->
+    <external-path name="waka_backups_root" path="waka/" />
+    <!-- repli privé à l'app si la permission n'est pas accordée -->
+    <external-files-path name="waka_backups_app" path="waka/" />
+</paths>

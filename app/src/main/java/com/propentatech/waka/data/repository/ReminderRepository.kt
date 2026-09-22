@@ -9,6 +9,8 @@ class ReminderRepository(private val reminderDao: ReminderDao) {
 
     suspend fun getAllActive(): List<Reminder> = reminderDao.getAllActive()
 
+    suspend fun getAll(): List<Reminder> = reminderDao.getAllReminders()
+
     fun observeForProjectItem(projectItemId: Long): Flow<List<Reminder>> =
         reminderDao.observeForProjectItem(projectItemId)
 

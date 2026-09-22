@@ -1,6 +1,7 @@
 package com.propentatech.waka
 
 import android.content.Context
+import com.propentatech.waka.data.backup.BackupRepository
 import com.propentatech.waka.data.local.WakaDatabase
 import com.propentatech.waka.data.prefs.AppPreferences
 import com.propentatech.waka.data.repository.ProjectRepository
@@ -20,6 +21,10 @@ class AppContainer(context: Context) {
 
     val reminderRepository: ReminderRepository by lazy {
         ReminderRepository(database.reminderDao())
+    }
+
+    val backupRepository: BackupRepository by lazy {
+        BackupRepository(projectRepository, reminderRepository, appContext)
     }
 
     val appPreferences: AppPreferences by lazy { AppPreferences(context) }

@@ -20,6 +20,8 @@ class ProjectRepository(
 
     suspend fun getChildren(parentId: Long): List<ProjectItem> = projectItemDao.getChildren(parentId)
 
+    suspend fun getAllItems(): List<ProjectItem> = projectItemDao.getAllItems()
+
     fun observeItem(id: Long): Flow<ProjectItem?> = projectItemDao.observeById(id)
 
     suspend fun getItem(id: Long): ProjectItem? = projectItemDao.getById(id)
@@ -36,6 +38,8 @@ class ProjectRepository(
     suspend fun getContributions(projectItemId: Long): List<Contribution> =
         contributionDao.getForProjectItem(projectItemId)
 
+    suspend fun getAllContributions(): List<Contribution> = contributionDao.getAllContributions()
+
     suspend fun addContribution(contribution: Contribution): Long = contributionDao.insert(contribution)
 
     suspend fun updateContribution(contribution: Contribution) = contributionDao.update(contribution)
@@ -49,6 +53,8 @@ class ProjectRepository(
         taskDependencyDao.getPrerequisitesOf(taskId)
 
     suspend fun getDependents(taskId: Long): List<TaskDependency> = taskDependencyDao.getDependents(taskId)
+
+    suspend fun getAllDependencies(): List<TaskDependency> = taskDependencyDao.getAll()
 
     /** @return false sans rien écrire si la dépendance créerait un cycle. */
     suspend fun addDependency(taskId: Long, dependsOnTaskId: Long): Boolean {

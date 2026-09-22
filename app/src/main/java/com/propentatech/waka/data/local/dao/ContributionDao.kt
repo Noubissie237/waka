@@ -24,4 +24,8 @@ interface ContributionDao {
 
     @Query("SELECT * FROM contributions WHERE projectItemId = :projectItemId ORDER BY date DESC")
     suspend fun getForProjectItem(projectItemId: Long): List<Contribution>
+
+    /** Utilisé pour l'export complet. */
+    @Query("SELECT * FROM contributions")
+    suspend fun getAllContributions(): List<Contribution>
 }
